@@ -172,3 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Legal AI data & vector stores
+data/
+*.db
+
