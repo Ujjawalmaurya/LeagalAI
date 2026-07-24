@@ -5,7 +5,7 @@ Helps you read Terms of Service, Privacy Policies, and contracts without getting
 ## How it works
 
 1. **Ingestion**: Reads PDF, DOCX, or TXT agreements and chunks them along legal section boundaries (`Section`, `Article`, `§`) while preserving page numbers.
-2. **Indexing**: Embeds chunks using Gemini (`text-embedding-004`) into a local Chroma vector store.
+2. **Indexing**: Embeds chunks using Gemini (`gemini-embedding-001`) into a local Chroma vector store.
 3. **Retrieval**: Uses Maximal Marginal Relevance (MMR) so you get diverse clauses instead of five copies of the same boilerplate.
 4. **Analysis**: Runs through a LangGraph workflow that prompts Gemini to unpack the clauses, highlight gotchas, and cite exact page and clause numbers.
 

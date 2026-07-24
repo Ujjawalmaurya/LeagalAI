@@ -45,12 +45,12 @@ with st.sidebar:
     with st.expander("Model Options"):
         model_choice = st.selectbox(
             "Chat Model",
-            options=["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+            options=["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-pro"],
             index=0,
         )
         embedding_choice = st.selectbox(
             "Embedding Model",
-            options=["text-embedding-004", "embedding-001"],
+            options=["gemini-embedding-001", "gemini-embedding-2-preview"],
             index=0,
         )
 
@@ -112,8 +112,8 @@ with st.sidebar:
 
 current_config = AppConfig(
     gemini_api_key=api_key,
-    chat_model=model_choice if "model_choice" in locals() else "gemini-2.0-flash",
-    embedding_model=embedding_choice if "embedding_choice" in locals() else "text-embedding-004",
+    chat_model=model_choice if "model_choice" in locals() else "gemini-3.6-flash",
+    embedding_model=embedding_choice if "embedding_choice" in locals() else "gemini-embedding-001",
 )
 
 # Main screen

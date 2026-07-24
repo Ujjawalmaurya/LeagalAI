@@ -15,8 +15,8 @@ DEFAULT_CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 @dataclass(frozen=True)
 class AppConfig:
     gemini_api_key: str
-    chat_model: str = "gemini-2.0-flash"
-    embedding_model: str = "text-embedding-004"
+    chat_model: str = "gemini-3.6-flash"
+    embedding_model: str = "gemini-embedding-001"
     chroma_dir: Path = DEFAULT_CHROMA_DIR
     chunk_size: int = 1000
     chunk_overlap: int = 150
@@ -33,6 +33,6 @@ def get_config(
     key = api_key_override or os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     return AppConfig(
         gemini_api_key=key.strip(),
-        embedding_model=embedding_model_override or "text-embedding-004",
-        chat_model=chat_model_override or "gemini-2.0-flash",
+        embedding_model=embedding_model_override or "gemini-embedding-001",
+        chat_model=chat_model_override or "gemini-3.6-flash",
     )
