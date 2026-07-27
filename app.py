@@ -1,4 +1,6 @@
 from __future__ import annotations
+# Inspired by ToS;DR (tosdr.org) — the open-source project that pioneered plain-English terms analysis.
+# Their work made this kind of tool feel possible.
 
 import os
 import streamlit as st
@@ -14,7 +16,7 @@ load_dotenv(override=True)
 
 st.set_page_config(
     page_title="Legal AI",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="auto",
 )
 
@@ -122,15 +124,18 @@ st.caption("Spot hidden risks, unfair clauses, and confusing terms in plain Engl
 
 # Prompt shortcuts when document is ready but chat is empty
 if st.session_state.active_doc_name and not st.session_state.messages:
-    st.write("Common questions you can ask:")
+    st.write("Try one of these:")
     sample_queries = [
-        "What are the biggest hidden risks or unfair terms here?",
-        "Can they change the terms or pricing without notifying me?",
-        "How do I cancel this, and will it auto-renew?",
-        "What personal data is collected and who is it shared with?",
+        "🔍 Give me the TL;DR — what should I actually know before agreeing?",
+        "🚩 What are the sneaky or unfair parts I should watch out for?",
+        "💸 Can they change prices or terms without telling me?",
+        "🔒 What data do they collect and who do they share it with?",
+        "❌ How do I cancel, and does this auto-renew?",
+        "⚖️ If something goes wrong, am I protected at all?",
     ]
     for q in sample_queries:
-        if st.button(q, key=f"q_{q}", use_container_width=True):
+        label = q
+        if st.button(label, key=f"q_{q}", use_container_width=True):
             st.session_state.prompt_to_submit = q
             st.rerun()
 
