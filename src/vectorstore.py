@@ -64,7 +64,8 @@ def retrieve_relevant_clauses(
     vectorstore = get_vectorstore(config=config, collection_name=collection_name)
     retriever = vectorstore.as_retriever(
         search_type="mmr",
-        search_kwargs={"k": k, "fetch_k": max(k * 3, 15)},
+        # fetch_k is the candidate pool MMR picks from — larger pool = more diverse results
+        search_kwargs={"k": k, "fetch_k": max(k * 4, 20)},
     )
     return retriever.invoke(query)
 

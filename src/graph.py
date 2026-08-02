@@ -145,3 +145,65 @@ def run_legal_analysis(
     }
 
     return graph.invoke(initial_state)
+
+
+_SUGGESTION_PROMPT = """You are looking at chunks from a legal document.
+
+Based only on what's actually in these chunks, write 6 short questions that someone would genuinely want to ask before agreeing to this document.
+
+Rules:
+- Make each question specific to this document, not generic.
+- Keep each question under 12 words.
+- No duplicates, no fluff.
+- Return ONLY a JSON array of 6 strings. No explanation, no markdown, just the array.
+
+Example output:
+["Can they share my data with advertisers?", "What happens if I miss a payment?", ...]"""
+
+
+def generate_suggested_questions(config: AppConfig | None = None) -> list[str]:
+    """Do a broad retrieval then ask the LLM to generate document-specific questions."""
+    cfg = config or get_config()
+
+    # Broad seed so MMR samples diverse chunks from across the document
+    docs = retrieve_relevant_clauses(
+        query=(
+            "overview rights obligations data privacy payment cancellation "
+            "arbitration liability termination third party disclosure auto-renewal"
+        ),
+        config=cfg,
+        k=10,
+    )
+
+    if not docs:
+        return []
+
+    context = "\n\n---\n\n".join(d.page_content.strip() for d in docs)
+
+    llm = ChatGoogleGenerativeAI(
+        model=cfg.chat_model,
+        google_api_key=cfg.gemini_api_key,
+        temperature=0.3,
+    )
+
+    messages = [
+        SystemMessage(content=_SUGGESTION_PROMPT),
+        HumanMessage(content=f"Document chunks:\n\n{context}"),
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        raw = _extract_text(response.content).strip()
+        # Strip markdown code fences if the model wraps it
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        import json
+        questions = json.loads(raw.strip())
+        if isinstance(questions, list):
+            return [str(q) for q in questions[:6]]
+    except Exception:
+        pass
+
+    return []

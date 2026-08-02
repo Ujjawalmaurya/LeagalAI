@@ -1,6 +1,5 @@
 from __future__ import annotations
 # Inspired by ToS;DR (tosdr.org) — the open-source project that pioneered plain-English terms analysis.
-# Their work made this kind of tool feel possible.
 
 import os
 import streamlit as st
@@ -8,10 +7,10 @@ from dotenv import load_dotenv
 
 from src.config import AppConfig
 from src.document_loader import extract_documents_from_upload, split_legal_documents
-from src.graph import run_legal_analysis
+from src.graph import generate_suggested_questions, run_legal_analysis
+from src.utils import extract_text_from_response, render_citations, split_into_two_columns
 from src.vectorstore import clear_vectorstore, index_documents
 
-# Ensure latest .env is loaded
 load_dotenv(override=True)
 
 st.set_page_config(
@@ -20,6 +19,7 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+# Session state defaults
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "active_doc_name" not in st.session_state:
@@ -28,11 +28,18 @@ if "indexed_chunks_count" not in st.session_state:
     st.session_state.indexed_chunks_count = 0
 if "prompt_to_submit" not in st.session_state:
     st.session_state.prompt_to_submit = None
+if "suggested_questions" not in st.session_state:
+    st.session_state.suggested_questions = []
+if "index_stats" not in st.session_state:
+    # Stores chunk config used during indexing for display in the sidebar
+    st.session_state.index_stats = {}
 
-# Resolve key directly from environment
 api_key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
 
-# Sidebar: Document upload and model options
+
+# ---------------------------------------------------------------------------
+# Sidebar — document upload and model options
+# ---------------------------------------------------------------------------
 with st.sidebar:
     st.subheader("Document")
     uploaded_file = st.file_uploader(
@@ -44,19 +51,7 @@ with st.sidebar:
     if not api_key:
         st.warning("No GOOGLE_API_KEY found in your environment or .env file.")
 
-    with st.expander("Model Options"):
-        model_choice = st.selectbox(
-            "Chat Model",
-            options=["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-pro"],
-            index=0,
-        )
-        embedding_choice = st.selectbox(
-            "Embedding Model",
-            options=["gemini-embedding-001", "gemini-embedding-2-preview"],
-            index=0,
-        )
-
-    # File indexing
+    # Index the uploaded file
     if uploaded_file is not None:
         file_name = uploaded_file.name
         is_new_file = st.session_state.active_doc_name != file_name
@@ -68,11 +63,7 @@ with st.sidebar:
                 else:
                     with st.status("Reading and indexing document...", expanded=True) as status:
                         try:
-                            cfg = AppConfig(
-                                gemini_api_key=api_key,
-                                chat_model=model_choice,
-                                embedding_model=embedding_choice,
-                            )
+                            cfg = AppConfig(gemini_api_key=api_key)
                             clear_vectorstore(cfg)
 
                             file_bytes = uploaded_file.read()
@@ -91,6 +82,19 @@ with st.sidebar:
                                 st.session_state.active_doc_name = file_name
                                 st.session_state.indexed_chunks_count = count
                                 st.session_state.messages = []
+                                st.session_state.index_stats = {
+                                    "chunks": count,
+                                    "chunk_size": cfg.chunk_size,
+                                    "chunk_overlap": cfg.chunk_overlap,
+                                    "top_k": cfg.top_k_retrieval,
+                                    "chat_model": cfg.chat_model,
+                                    "embedding_model": cfg.embedding_model,
+                                    "storage": str(cfg.chroma_dir.relative_to(cfg.chroma_dir.parent.parent)),
+                                }
+
+                                status.update(label="Generating suggestions...", state="running")
+                                st.session_state.suggested_questions = generate_suggested_questions(cfg)
+
                                 status.update(
                                     label=f"Ready: {file_name} ({count} sections)",
                                     state="complete",
@@ -104,78 +108,105 @@ with st.sidebar:
         st.write("---")
         st.caption(f"Active: **{st.session_state.active_doc_name}** ({st.session_state.indexed_chunks_count} sections)")
         if st.button("Clear document", use_container_width=True):
-            cfg = AppConfig(gemini_api_key=api_key, embedding_model=embedding_choice)
+            cfg = AppConfig(gemini_api_key=api_key)
             clear_vectorstore(cfg)
             st.session_state.active_doc_name = None
             st.session_state.indexed_chunks_count = 0
             st.session_state.messages = []
+            st.session_state.suggested_questions = []
+            st.session_state.index_stats = {}
             st.rerun()
 
+    # Stats panel — shown after a document is indexed
+    if st.session_state.index_stats:
+        stats = st.session_state.index_stats
+        st.write("---")
+        st.caption("**Index stats**")
+        st.caption(f"Chunks stored: `{stats['chunks']}`")
+        st.caption(f"Chunk size: `{stats['chunk_size']}` chars")
+        st.caption(f"Overlap: `{stats['chunk_overlap']}` chars")
+        st.caption(f"Retrieval top-k: `{stats['top_k']}`")
+        st.write("")
+        st.caption("**Models**")
+        st.caption(f"Chat: `{stats['chat_model']}`")
+        st.caption(f"Embedding: `{stats['embedding_model']}`")
+        st.write("")
+        st.caption("**Storage**")
+        st.caption(f"`{stats['storage']}`")
 
-current_config = AppConfig(
-    gemini_api_key=api_key,
-    chat_model=model_choice if "model_choice" in locals() else "gemini-3.6-flash",
-    embedding_model=embedding_choice if "embedding_choice" in locals() else "gemini-embedding-001",
-)
 
+current_config = AppConfig(gemini_api_key=api_key)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+FALLBACK_QUESTIONS = [
+    "🔍 Give me the TL;DR — what should I know before agreeing?",
+    "🚩 What are the sneaky or unfair parts here?",
+    "💸 Can they change prices without telling me?",
+    "🔒 What data do they collect and share?",
+    "❌ How do I cancel, and does this auto-renew?",
+    "⚖️ Am I protected if something goes wrong?",
+]
+
+
+def render_question_grid(questions: list[str], key_prefix: str) -> None:
+    """
+    Renders clickable question buttons in a 2-column grid.
+    Uses split_into_two_columns so each column gets its own render pass —
+    no inline math or conditionals needed.
+    """
+    left_questions, right_questions = split_into_two_columns(questions)
+    left_col, right_col = st.columns(2)
+
+    with left_col:
+        for index, question in enumerate(left_questions):
+            if st.button(question, key=f"{key_prefix}_left_{index}", use_container_width=True):
+                st.session_state.prompt_to_submit = question
+                st.rerun()
+
+    with right_col:
+        for index, question in enumerate(right_questions):
+            if st.button(question, key=f"{key_prefix}_right_{index}", use_container_width=True):
+                st.session_state.prompt_to_submit = question
+                st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Main screen
+# ---------------------------------------------------------------------------
 st.title("Legal AI")
 st.caption("Spot hidden risks, unfair clauses, and confusing terms in plain English.")
 
-# Prompt shortcuts when document is ready but chat is empty
+# Show suggestions when a doc is loaded but the chat hasn't started yet.
+# Centre-column layout keeps the buttons from stretching across the full wide page.
 if st.session_state.active_doc_name and not st.session_state.messages:
-    st.write("Try one of these:")
-    sample_queries = [
-        "🔍 Give me the TL;DR — what should I actually know before agreeing?",
-        "🚩 What are the sneaky or unfair parts I should watch out for?",
-        "💸 Can they change prices or terms without telling me?",
-        "🔒 What data do they collect and who do they share it with?",
-        "❌ How do I cancel, and does this auto-renew?",
-        "⚖️ If something goes wrong, am I protected at all?",
-    ]
-    for q in sample_queries:
-        label = q
-        if st.button(label, key=f"q_{q}", use_container_width=True):
-            st.session_state.prompt_to_submit = q
-            st.rerun()
+    questions = st.session_state.suggested_questions or FALLBACK_QUESTIONS
+    heading = "Things you might want to ask:" if st.session_state.suggested_questions else "Try one of these:"
+
+    _padding, centre, _padding = st.columns([1, 3, 1])
+    with centre:
+        st.write(heading)
+        render_question_grid(questions, key_prefix="suggest")
 
 elif not st.session_state.active_doc_name:
     st.info("Upload a PDF, DOCX, or TXT agreement in the sidebar to get started.")
 
-def clean_chat_text(val: Any) -> str:
-    if isinstance(val, str) and (val.startswith("[{'type': 'text'") or val.startswith('[{"type": "text"')):
-        try:
-            import ast
-            parsed = ast.literal_eval(val)
-            if isinstance(parsed, list):
-                chunks = [b.get("text", "") for b in parsed if isinstance(b, dict) and "text" in b]
-                if chunks:
-                    return "\n".join(chunks).strip()
-        except Exception:
-            pass
-    return str(val) if val is not None else ""
 
-
-# Render message history
+# ---------------------------------------------------------------------------
+# Chat history
+# ---------------------------------------------------------------------------
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(clean_chat_text(msg["content"]))
-
-        citations = msg.get("citations", [])
-        if citations:
-            with st.expander(f"Referenced clauses ({len(citations)})"):
-                for cite in citations:
-                    ref_idx = cite.get("ref", 1)
-                    source = cite.get("source", "Document")
-                    page = cite.get("page", 1)
-                    text = cite.get("full_text", "").strip()
-
-                    st.markdown(f"**Clause {ref_idx}** (Page {page}, `{source}`)")
-                    st.markdown(f"> {text}")
-                    st.write("")
+        st.markdown(extract_text_from_response(msg["content"]))
+        render_citations(msg.get("citations", []), st)
 
 
-# Chat input handling
+# ---------------------------------------------------------------------------
+# Chat input
+# ---------------------------------------------------------------------------
 user_input = st.chat_input("Ask a question about this document...")
 
 if st.session_state.prompt_to_submit:
@@ -200,18 +231,7 @@ if user_input:
                     citations = result.get("citations", [])
 
                     st.markdown(answer)
-
-                    if citations:
-                        with st.expander(f"Referenced clauses ({len(citations)})"):
-                            for cite in citations:
-                                ref_idx = cite.get("ref", 1)
-                                source = cite.get("source", "Document")
-                                page = cite.get("page", 1)
-                                text = cite.get("full_text", "").strip()
-
-                                st.markdown(f"**Clause {ref_idx}** (Page {page}, `{source}`)")
-                                st.markdown(f"> {text}")
-                                st.write("")
+                    render_citations(citations, st)
 
                     st.session_state.messages.append(
                         {

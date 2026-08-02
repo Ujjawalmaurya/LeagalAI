@@ -19,8 +19,8 @@ class AppConfig:
     embedding_model: str = "gemini-embedding-001"
     chroma_dir: Path = DEFAULT_CHROMA_DIR
     chunk_size: int = 1000
-    chunk_overlap: int = 150
-    top_k_retrieval: int = 5
+    chunk_overlap: int = 250   # higher overlap = fewer cut-off clauses at chunk boundaries
+    top_k_retrieval: int = 8   # more chunks per query = better coverage of the document
 
 
 def get_config(
