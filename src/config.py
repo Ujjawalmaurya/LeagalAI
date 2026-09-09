@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Reload .env if it changes
+# Reload .env when values change
 load_dotenv(override=True)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,8 +19,8 @@ class AppConfig:
     embedding_model: str = "gemini-embedding-001"
     chroma_dir: Path = DEFAULT_CHROMA_DIR
     chunk_size: int = 1000
-    chunk_overlap: int = 250   # higher overlap = fewer cut-off clauses at chunk boundaries
-    top_k_retrieval: int = 8   # more chunks per query = better coverage of the document
+    chunk_overlap: int = 250   # Overlap stops sentences from getting cut off between parts
+    top_k_retrieval: int = 8   # How many parts to read for each question
 
 
 def get_config(

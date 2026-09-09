@@ -12,10 +12,10 @@ from src.config import AppConfig, get_config
 
 
 def get_embeddings(config: AppConfig) -> GoogleGenerativeAIEmbeddings:
-    # Fail fast if key is missing instead of throwing generic errors deep in Chroma
+    # Stop early if API key is missing
     if not config.gemini_api_key:
         raise ValueError(
-            "Google API key is missing. Set GOOGLE_API_KEY in .env or provide it in the sidebar."
+            "API key missing. Please set GOOGLE_API_KEY in your .env file."
         )
 
     return GoogleGenerativeAIEmbeddings(
@@ -60,11 +60,11 @@ def retrieve_relevant_clauses(
     k: int = 5,
     collection_name: str = "legal_documents",
 ) -> list[Document]:
-    # MMR prevents fetching 5 copies of the same boilerplate clause
+    # Use MMR search so we do not get repeated lines
     vectorstore = get_vectorstore(config=config, collection_name=collection_name)
     retriever = vectorstore.as_retriever(
         search_type="mmr",
-        # fetch_k is the candidate pool MMR picks from — larger pool = more diverse results
+        # fetch_k picks a bigger group first so results have good variety
         search_kwargs={"k": k, "fetch_k": max(k * 4, 20)},
     )
     return retriever.invoke(query)
@@ -79,6 +79,6 @@ def clear_vectorstore(
         store = get_vectorstore(config=cfg, collection_name=collection_name)
         store.delete_collection()
     except Exception:
-        # If Chroma's handle is locked or stale, nuke the folder directly
+        # If Chroma cannot delete collection, delete the folder directly
         if cfg.chroma_dir.exists():
             shutil.rmtree(cfg.chroma_dir, ignore_errors=True)

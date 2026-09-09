@@ -1,7 +1,7 @@
 [project]
 name = "leagal-ai"
 version = "0.1.0"
-description = "Legal document risk analysis and plain-English RAG assistant"
+description = "Simple tool to read agreements and find risky points"
 readme = "README.md"
 requires-python = ">=3.11, <3.13"
 dependencies = [

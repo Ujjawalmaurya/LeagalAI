@@ -5,10 +5,7 @@ from typing import Any
 
 
 def extract_text_from_response(value: Any) -> str:
-    """
-    Gemini sometimes returns content as a JSON-encoded list of text blocks
-    instead of a plain string. This unwraps that and returns clean text.
-    """
+    # Gemini can return a list of text blocks instead of a string. Convert to normal text.
     if not isinstance(value, str):
         return str(value) if value is not None else ""
 
@@ -28,32 +25,25 @@ def extract_text_from_response(value: Any) -> str:
 
 
 def split_into_two_columns(items: list) -> tuple[list, list]:
-    """
-    Splits a flat list into two roughly equal halves for side-by-side display.
-    Even-indexed items go left, odd-indexed go right.
-    """
+    # Split items into two lists for side by side display
     left = items[::2]
     right = items[1::2]
     return left, right
 
 
 def render_citations(citations: list[dict], streamlit_module: Any) -> None:
-    """
-    Renders a list of clause citations as an expander with formatted markdown.
-    Extracted here so the same rendering logic isn't duplicated across
-    chat history and the live response block.
-    """
+    # Show referenced lines in an expander
     st = streamlit_module
     if not citations:
         return
 
-    with st.expander(f"Referenced clauses ({len(citations)})"):
+    with st.expander(f"Referenced sections ({len(citations)})"):
         for cite in citations:
             ref = cite.get("ref", 1)
             page = cite.get("page", 1)
             source = cite.get("source", "Document")
             text = cite.get("full_text", "").strip()
 
-            st.markdown(f"**Clause {ref}** (Page {page}, `{source}`)")
+            st.markdown(f"**Section {ref}** (Page {page}, `{source}`)")
             st.markdown(f"> {text}")
             st.write("")
